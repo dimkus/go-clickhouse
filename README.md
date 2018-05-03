@@ -83,6 +83,7 @@ if err != nil {
 }
 
 /**
+fetchObj:
 ([]fetch)
   0(fetch)
     VisitId(string) "ufifgdwp0y0wfiqp-7887"
@@ -94,6 +95,50 @@ if err != nil {
     VisitId(string) "ufifgdwp0y0wfiwt-408"
     VisitNumber(int) 2
 ...
+*/
+```
+
+#### Fetch rows and stat
+```go
+conn := clickhouse.NewConn("localhost:8123", clickhouse.NewHttpTransport())
+
+queryStr := `SELECT visit_id, visit_number FROM clicks ORDER BY created_at DESC LIMIT 5`
+query := clickhouse.NewQuery(queryStr)
+
+type fetch struct {
+    VisitId     string  `json:"visit_id"`
+    VisitNumber int     `json:"visit_number"`
+}
+fetchObj := []fetch{}
+
+err, stat := query.ExecScanStat(dbConnection, &fetchObj)
+
+if err != nil {
+    //
+}
+
+/**
+fetchObj:
+([]fetch)
+  0(fetch)
+    VisitId(string) "ufifgdwp0y0wfiqp-7887"
+    VisitNumber(int) 1
+  1(fetch)
+    VisitId(string) "ufifgdwp0y0wfiww-5356"
+    VisitNumber(int) 1
+  2(fetch)
+    VisitId(string) "ufifgdwp0y0wfiwt-408"
+    VisitNumber(int) 2
+...
+
+stat:
+(clickhouse.Stat)
+   Rows(int) 25
+   RowsBeforeLimitAtLeast(int) 73
+   Stat(struct)
+     Elapsed(float64) 0.003121279
+     RowsRead(int) 74553
+     BytesRead(int) 1043742
 */
 ```
 

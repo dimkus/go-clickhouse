@@ -25,6 +25,16 @@ type Query struct {
 	params url.Values
 }
 
+type Stat struct {
+	Rows     				int	`json:"rows"`
+	RowsBeforeLimitAtLeast	int	`json:"rows_before_limit_at_least"`
+	Stat struct {
+		Elapsed     float64	`json:"elapsed"`
+		RowsRead 	int     `json:"rows_read"`
+		BytesRead 	int     `json:"bytes_read"`
+	} `json:"statistics"`
+}
+
 // Adding external dictionary
 func (q *Query) AddExternal(name string, structure string, data []byte) {
 	q.externals = append(q.externals, External{Name: name, Structure: structure, Data: data})
@@ -65,48 +75,73 @@ func (r *Iter) Len() int {
 }
 
 func (q Query) Exec(conn *Conn) (err error) {
+	_, err = q.fetch(conn)
+	return err
+}
+
+func (q Query) fetch(conn *Conn) (resp string, err error) {
 	if conn == nil {
-		return errors.New("Connection pointer is nil")
+		return "", errors.New("Connection pointer is nil")
 	}
-	resp, err := conn.transport.Exec(conn, q, false)
+	resp, err = conn.transport.Exec(conn, q, false)
 	if err == nil {
 		err = errorFromResponse(resp)
+	}
+
+	return resp, err
+}
+
+func (q Query) readData(resp []byte, obj interface{}) (err error) {
+	var readObj struct{
+		Data json.RawMessage `json:"data"`
+	}
+
+	errUnmarshal := json.Unmarshal([]byte(resp), &readObj)
+	if errUnmarshal != nil {
+		return errUnmarshal
+	}
+
+	errUnmarshalObj := json.Unmarshal(readObj.Data, &obj)
+	if errUnmarshalObj != nil {
+		return errUnmarshalObj
+	}
+	return nil
+}
+
+func (q Query) ExecScan(conn *Conn, dataObj interface{}) (error) {
+	q.Stmt += " FORMAT JSON"
+	resp, err := q.fetch(conn)
+
+	if err == nil {
+		err := q.readData([]byte(resp), &dataObj)
+
+		if err != nil {
+			return err
+		}
 	}
 
 	return err
 }
 
-func (q Query) ExecScan(conn *Conn, obj interface{}) (error) {
-	if conn == nil {
-		return errors.New("Connection pointer is nil")
-	}
-
+func (q Query) ExecScanStat(conn *Conn, dataObj interface{}) (Stat, error) {
 	q.Stmt += " FORMAT JSON"
+	resp, err := q.fetch(conn)
 
-	resp, err := conn.transport.Exec(conn, q, false)
-
+	statObj := Stat{}
 	if err == nil {
-		err = errorFromResponse(resp)
-	}
+		err = q.readData([]byte(resp), &dataObj)
 
-	if err == nil {
-		var readObj struct{
-			Data json.RawMessage `json:"data"`
+		if err != nil {
+			return statObj, err
 		}
 
-		errUnmarshal := json.Unmarshal([]byte(resp), &readObj)
+		errUnmarshal := json.Unmarshal([]byte(resp), &statObj)
 		if errUnmarshal != nil {
-			return errUnmarshal
+			return statObj, errUnmarshal
 		}
-
-		errUnmarshalObj := json.Unmarshal(readObj.Data, &obj)
-		if errUnmarshalObj != nil {
-			return errUnmarshalObj
-		}
-
 	}
 
-	return err
+	return statObj, err
 }
 
 type Iter struct {
